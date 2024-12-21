@@ -29,17 +29,14 @@ __plugin_meta__ = PluginMetadata(
         author="HibiKier",
         version="0.1",
         plugin_type=PluginType.SUPERUSER,
-        configs=[
-            RegisterConfig(
-                key="type",
-                value="mix",
-                help="自检触发方式 ['message', 'poke', 'mix']",
-                default_value="mix",
-            )
-        ],
+        configs=[RegisterConfig(
+            key="type",
+            value="mix",
+            help="自检触发方式 ['message', 'poke', 'mix']",
+            default_value="mix",
+        )],
     ).dict(),
 )
-
 
 async def handle_self_check():
     try:
@@ -61,29 +58,42 @@ async def handle_self_check():
         await MessageUtils.build_message(f"自检失败: {e}").send()
         logger.error("自检失败", e=e)
 
-
 check_type = Config.get_config("check", "type")
 
-if check_type in {"message", "mix"}:
-    # message
-    _self_check_matcher = on_alconna(
+check_handlers = {
+    "message": on_alconna(
         Alconna("自检"), rule=to_me(), permission=SUPERUSER, block=True, priority=1
-    )
-
-    @_self_check_matcher.handle()
-    async def handle_message_check():
-        await handle_self_check()
-
-
-if check_type in {"poke", "mix"}:
-    # poke
-    _self_check_poke_matcher = on_notice(
+    ),
+    "poke": on_notice(
         priority=5,
         permission=SUPERUSER,
         block=False,
         rule=notice_rule(PokeNotifyEvent) & to_me(),
-    )
+    ),
+    "mix": [
+        on_alconna(
+            Alconna("自检"), rule=to_me(), permission=SUPERUSER, block=True, priority=1
+        ),
+        on_notice(
+            priority=5,
+            permission=SUPERUSER,
+            block=False,
+            rule=notice_rule(PokeNotifyEvent) & to_me(),
+        )
+    ],
+}
 
-    @_self_check_poke_matcher.handle()
-    async def handle_poke_check(event: PokeNotifyEvent):
-        await handle_self_check()
+handlers = check_handlers.get(check_type)
+handlerste = check_handlers.get("mix")
+
+
+if handlers:
+    if isinstance(handlers, list):
+        for handler in handlers:
+            @handler.handle()
+            async def handle_check():
+                await handle_self_check()
+    else:
+        @handlers.handle()
+        async def handle_check():
+            await handle_self_check()
